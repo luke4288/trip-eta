@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>接機行程</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="接機行程">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>接機行程</h1>
+    <div class="meta"><span id="updated">載入中…</span><button id="refresh" type="button">重新整理</button></div>
+  </header>
+  <div id="errors" aria-live="polite"></div>
+
+  <section class="card">
+    <h2>接駁行程 Next 3 buses</h2>
+    <div class="sub" style="margin:-6px 0 8px">荃景圍天橋 (TW378) 68A → 青衣站 → 機場快線</div>
+    <div id="conn"><div class="muted">載入中…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>未來 60 分鐘 Next 60 min <span class="sub" id="winlabel"></span></h2>
+    <ul id="timeline" class="list compact"><li class="muted">載入中…</li></ul>
+    <p class="note">由手機現時時間起計一小時；68A 在荃景圍天橋站，機場快線在青衣站。</p>
+  </section>
+
+  <section class="card plan">
+    <h2>出門計劃（選填）Leave-door planner</h2>
+    <label class="row">目標抵達機場時間 HKT（選填）
+      <input id="target" type="time" value="">
+    </label>
+    <div id="result" class="result">計算中…</div>
+    <details>
+      <summary>假設 Assumptions（可修改，分鐘）</summary>
+      <div class="assump">
+        <label>步行到巴士站<input id="a_walkToStop" type="number" min="0" inputmode="numeric"></label>
+        <label>68A 車程到青衣站<input id="a_busRide" type="number" min="0" inputmode="numeric"></label>
+        <label>步行入機鐵閘機<input id="a_walkToGate" type="number" min="0" inputmode="numeric"></label>
+        <label>機場快線車程<input id="a_aelRide" type="number" min="0" inputmode="numeric"></label>
+        <label>步行到 B 廳<input id="a_walkToHallB" type="number" min="0" inputmode="numeric"></label>
+        <button id="reset" type="button" class="link">還原預設</button>
+      </div>
+      <p class="note">MTR 只提供未來約 4 班車、KMB 只提供最多 3 班 ETA；其後的班次按班距推算（標示「估」）。</p>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>68A 荃景圍天橋 → 青衣站</h2>
+    <ul id="bus" class="list"><li class="muted">載入中…</li></ul>
+  </section>
+
+  <section class="card">
+    <h2>機場快線 青衣 → 機場 (AEL)</h2>
+    <ul id="mtr" class="list"><li class="muted">載入中…</li></ul>
+  </section>
+
+  <p class="foot">資料來源：data.gov.hk（KMB、MTR）。每 30 秒自動更新。實際時間以現場為準。</p>
+</main>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

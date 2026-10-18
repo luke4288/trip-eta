@@ -35,13 +35,13 @@
     });
   }
   function fetchKmb(now) {
-    return getJson(L.KMB_URL).then(function (j) { return { buses: L.parseKmb(j, now), stamp: j && j.generated_timestamp }; });
+    return getJson(L.KMB_URL).then(function (j) { var all = L.parseKmb(j, now); return { buses: all.filter(function (b) { return !b.scheduled; }), skipped: all.filter(function (b) { return b.scheduled; }).length, stamp: j && j.generated_timestamp }; });
   }
 
   function refresh() {
     $('refresh').disabled = true;
     var now = Date.now();
-    var kb = fetchKmb(now).then(function (r) { state.buses = r.buses; state.kmbStamp = r.stamp; delete state.errors.bus; })
+    var kb = fetchKmb(now).then(function (r) { state.buses = r.buses; state.kmbStamp = r.stamp; state.skipped = r.skipped; delete state.errors.bus; })
       .catch(function (e) { state.errors.bus = '巴士（KMB）資料載入失敗：' + e.message; });
     var mt = fetchMtr(now).then(function (r) { state.trains = r.trains; state.mtrStamp = r.stamp; delete state.errors.mtr; })
       .catch(function (e) { state.errors.mtr = '機場快線（MTR）資料載入失敗：' + e.message; });
@@ -52,15 +52,15 @@
 
   function render() {
     var now = Date.now();
-    state.eb = L.extendBuses(state.buses.filter(function (b) { return b.time >= now - 30000; }), now);
-    state.et = L.extendTrains(state.trains.filter(function (t) { return t.time >= now - 30000; }), now);
+    state.eb = state.buses.filter(function (b) { return b.time >= now - 30000; });
+    state.et = state.trains.filter(function (t) { return t.time >= now - 30000; });
     $('updated').textContent = state.updated ? '最後更新 ' + L.fmtSec(state.updated) + ' HKT（實時）' : '尚未更新';
     $('stamps').textContent = (state.kmbStamp || state.mtrStamp) ? '資料時間：KMB ' + (state.kmbStamp ? String(state.kmbStamp).slice(11, 19) : '—') + ' · MTR ' + (state.mtrStamp ? String(state.mtrStamp).slice(11, 19) : '—') + '（HKT，來自 API）' : '';
     $('errors').innerHTML = '';
     Object.keys(state.errors).forEach(function (k) {
       var d = document.createElement('div'); d.className = 'err'; d.textContent = '⚠ ' + state.errors[k] + '（顯示的可能是舊資料，請按重新整理）'; $('errors').appendChild(d);
     });
-    $('bus').innerHTML = state.buses.length ? state.buses.slice(0, 3).map(function (b) {
+    $('bus').innerHTML = state.buses.length ? state.buses.map(function (b) {
       var m = Math.round((b.time - now) / 60000);
       return '<li><span class="big">' + (m <= 0 ? '即將到站' : m + ' 分鐘') + '</span><span class="sub">' + L.fmt(b.time) + (b.remark ? ' · ' + esc(b.remark) : '') + ' <span class="badge live">實時</span></span></li>';
     }).join('') : '<li class="muted">' + (state.errors.bus ? '無法取得資料' : '暫時沒有 68A 班次資料（可能已收車或未發車）') + '</li>';
@@ -76,38 +76,38 @@
     if (!state.buses.length) { el.innerHTML = '<div class="muted">' + (state.errors.bus ? '無法取得巴士資料' : '暫時沒有 68A 班次資料') + '</div>'; return; }
     if (!state.trains.length) { el.innerHTML = '<div class="muted">' + (state.errors.mtr ? '無法取得機場快線資料' : '暫時沒有機場快線資料') + '</div>'; return; }
     var a = readAssump(), tgt = L.targetToMs($('target').value, now);
-    var p = L.plan(state.eb.slice(0, 3), state.et, tgt, now, a);
+    var p = L.plan(state.eb, state.et, tgt, now, a);
     el.innerHTML = p.options.map(function (o, i) {
       var mins = Math.round((o.bus.time - now) / 60000), tsy = o.bus.time + a.busRide * 60000;
       var air = o.train ? o.train.time + a.aelRide * 60000 : null;
       var late = o.arrive !== null && !isNaN(tgt) && o.arrive > tgt;
       var hasT = !isNaN(tgt);
-      var cls = (o.missed || late) ? 'bad' : 'ok';
-      var tag = o.missed ? '需即刻出門／已來不及' : (!hasT ? '' : (late ? '遲過目標 ' + L.fmt(tgt) : '趕得及 ' + L.fmt(tgt)));
+      var cls = (o.missed || late || o.noTrain) ? 'bad' : 'ok';
+      var tag = o.noTrain ? '暫無可趕上的實時機場快線' : o.missed ? '需即刻出門／已來不及' : (!hasT ? '' : (late ? '遲過目標 ' + L.fmt(tgt) : '趕得及 ' + L.fmt(tgt)));
       return '<div class="conn"><div class="ch"><span class="big">' + (mins <= 0 ? '即將到站' : mins + ' 分鐘') + '</span><span class="tag ' + cls + '">' + tag + '</span></div>' +
         '<table>' +
         '<tr><td>出門</td><td class="v">' + L.fmt(o.leave) + '</td></tr>' +
-        '<tr><td>68A 到站</td><td class="v">' + L.fmt(o.bus.time) + ' ' + badge(o.bus.estimated) + (o.bus.remark ? ' <span class="sub">' + esc(o.bus.remark) + '</span>' : '') + '</td></tr>' +
+        '<tr><td>68A 到站</td><td class="v">' + L.fmt(o.bus.time) + ' ' + badge() + (o.bus.remark ? ' <span class="sub">' + esc(o.bus.remark) + '</span>' : '') + '</td></tr>' +
         '<tr><td>抵達青衣站</td><td class="v">' + L.fmt(tsy) + '</td></tr>' +
-        '<tr><td>機場快線開出</td><td class="v">' + (o.train ? L.fmt(o.train.time) + ' ' + badge(o.train.estimated) + ' · 月台 ' + esc(o.train.plat) : '—') + '</td></tr>' +
+        '<tr><td>機場快線開出</td><td class="v">' + (o.train ? L.fmt(o.train.time) + ' ' + badge() + ' · 月台 ' + esc(o.train.plat) : '<span class="bad">暫無可趕上的實時班次</span>') + '</td></tr>' +
         '<tr><td>抵達機場</td><td class="v">' + (air ? L.fmt(air) + ' <span class="sub">（B 廳 ' + L.fmt(o.arrive) + '）</span>' : '—') + '</td></tr>' +
         '</table></div>';
-    }).join('') + '<p class="note">「實時」＝KMB 即時 ETA；「估」＝按觀察到的班距推算。' + (state.buses.length < 3 ? '目前 KMB 只提供 ' + state.buses.length + ' 班實時資料。' : 'KMB 只提供最多 3 班實時 ETA。') + '</p>';
+    }).join('') + '<p class="note">全部為 API 實時資料，不作推算。KMB 目前提供 ' + state.buses.length + ' 班實時 ETA；MTR 目前提供 ' + state.trains.length + ' 班機場快線。若上列班次之後的機場快線尚未出現在 MTR 資料內，會顯示「暫無可趕上的實時班次」。' + (state.skipped ? '另有 ' + state.skipped + ' 班標示「原定班次」（時間表資料，非實時），已排除。' : '') + '</p>';
     renderTimeline(now, a);
   }
   function renderTimeline(now, a) {
     var end = now + 60 * 60000, items = [];
     state.eb.forEach(function (b) { if (b.time <= end) {
       var tr = L.plan([b], state.et, NaN, now, a).options[0];
-      items.push({ t: b.time, kind: 'bus', est: b.estimated, extra: tr.arrive ? '→ 機場 ' + L.fmt(tr.train.time + a.aelRide * 60000) : '' }); } });
-    state.et.forEach(function (t) { if (t.time <= end) items.push({ t: t.time, kind: 'ael', est: t.estimated, extra: '月台 ' + esc(t.plat || '') }); });
+      items.push({ t: b.time, kind: 'bus', extra: tr.train ? '→ 機場 ' + L.fmt(tr.train.time + a.aelRide * 60000) : '→ 暫無可趕上的實時機場快線' }); } });
+    state.et.forEach(function (t) { if (t.time <= end) items.push({ t: t.time, kind: 'ael', extra: '月台 ' + esc(t.plat || '') }); });
     items.sort(function (x, y) { return x.t - y.t; });
     $('timeline').innerHTML = items.length ? items.map(function (i) {
-      return '<li><span><b>' + L.fmt(i.t) + '</b> ' + (i.kind === 'bus' ? '🚌 68A' : '🚆 機場快線') + '</span><span class="sub">' + i.extra + ' <span class="badge' + (i.est ? '' : ' live') + '">' + (i.est ? '估' : '實時') + '</span></span></li>';
+      return '<li><span><b>' + L.fmt(i.t) + '</b> ' + (i.kind === 'bus' ? '🚌 68A' : '🚆 機場快線') + '</span><span class="sub">' + i.extra + ' ' + badge() + '</span></li>';
     }).join('') : '<li class="muted">此時段沒有資料</li>';
     $('winlabel').textContent = L.fmt(now) + ' – ' + L.fmt(end) + ' HKT';
   }
-  function badge(est) { return '<span class="badge' + (est ? '' : ' live') + '">' + (est ? '估' : '實時') + '</span>'; }
+  function badge() { return '<span class="badge live">實時</span>'; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   function renderPlan(now) {
@@ -118,16 +118,15 @@
     if (!p.best) {
       var first = p.options.filter(function (o) { return !o.missed && o.arrive; })[0];
       el.innerHTML = '<div class="lv bad">趕不及 ' + L.fmt(tgt) + '</div><div class="sub">' +
-        (first ? '最早可行：' + L.fmt(first.bus.time) + ' 巴士，預計 ' + L.fmt(first.arrive) + ' 抵達 B 廳（立即出門）。' : '可見的班次已來不及，請看下一班。') + '</div>';
+        (first ? '最早可行：' + L.fmt(first.bus.time) + ' 巴士，預計 ' + L.fmt(first.arrive) + ' 抵達 B 廳（立即出門）。' : '目前實時資料內沒有可行的班次（巴士已來不及，或暫無可趕上的實時機場快線）。') + '</div>';
       return;
     }
     var b = p.best, wait = Math.round((b.leave - now) / 60000);
     el.innerHTML = '<div class="sub">建議出門</div><div class="lv ok">' + L.fmt(b.leave) + '</div>' +
       '<div class="sub">（約 ' + (wait <= 0 ? '現在' : wait + ' 分鐘後') + '）</div>' +
-      '<div style="margin-top:6px">搭 <b>' + L.fmt(b.bus.time) + '</b> 的 68A → 搭 <b>' + L.fmt(b.train.time) + '</b>' + (b.train.estimated ? '（估）' : '') +
-      ' 機場快線 → <b>' + L.fmt(b.arrive) + '</b> 抵達 B 廳' +
+      '<div style="margin-top:6px">搭 <b>' + L.fmt(b.bus.time) + '</b> 的 68A → 搭 <b>' + L.fmt(b.train.time) + '</b> 機場快線 → <b>' + L.fmt(b.arrive) + '</b> 抵達 B 廳' +
       '<div class="sub">比目標早 ' + Math.max(0, Math.round((tgt - b.arrive) / 60000)) + ' 分鐘</div>' +
-      (p.limited ? '<div class="sub">⚠ 只顯示 3 班巴士；之後可能還有更遲但仍趕得及的班次。</div>' : '') + '</div>';
+      (p.limited ? '<div class="sub">⚠ 這是目前實時資料內最後一班巴士；之後可能還有更遲但仍趕得及的班次，尚未有實時資料。</div>' : '') + '</div>';
   }
 
   function init() {

@@ -14,7 +14,7 @@
       .filter(function (d) { return d && d.dir === 'O' && d.eta; })
       .map(function (d) {
         var t = Date.parse(d.eta);
-        return { time: t, mins: Math.round((t - nowMs) / MIN), remark: d.rmk_tc || '', seq: d.eta_seq };
+        return { time: t, mins: Math.round((t - nowMs) / MIN), remark: d.rmk_tc || '', seq: d.eta_seq, scheduled: /原定班次|Scheduled/i.test((d.rmk_tc || '') + ' ' + (d.rmk_en || '')) };
       })
       .filter(function (d) { return !isNaN(d.time) && d.time >= nowMs - 30000; })
       .sort(function (a, b) { return a.time - b.time; });
@@ -28,40 +28,16 @@
       return { time: t, mins: Math.round((t - nowMs) / MIN), plat: d.plat, dest: d.dest };
     }).filter(function (d) { return !isNaN(d.time); }).sort(function (a, b) { return a.time - b.time; });
   }
-  // Extend a live list with ESTIMATED entries (observed headway) until endMs. Live entries keep estimated:false.
-  function extend(list, endMs, defGap, minGap, maxGap) {
-    var out = list.map(function (x) { return Object.assign({}, x, { estimated: false }); });
-    if (!out.length) return out;
-    var gap = defGap;
-    if (out.length > 1) {
-      var gs = []; for (var i = 1; i < out.length; i++) gs.push(out[i].time - out[i - 1].time);
-      gs.sort(function (a, b) { return a - b; });
-      gap = Math.max(minGap, Math.min(maxGap, gs[Math.floor(gs.length / 2)]));
-    }
-    var t = out[out.length - 1].time + gap, tpl = out[out.length - 1];
-    while (t <= endMs) { out.push(Object.assign({}, tpl, { time: t, estimated: true, remark: '' })); t += gap; }
-    return out;
-  }
-  function window60(nowMs) { return { start: nowMs, end: nowMs + 60 * MIN }; }
-  function extendBuses(buses, nowMs) { return extend(buses, nowMs + 60 * MIN, 20 * MIN, 12 * MIN, 30 * MIN); }
-  function extendTrains(trains, nowMs) { return extend(trains, nowMs + 60 * MIN, 10 * MIN, 8 * MIN, 15 * MIN); }
   // plan: pick the LATEST bus whose arrival at Hall B <= target
   function plan(buses, trains, targetMs, nowMs, a) {
     a = Object.assign({}, DEFAULTS, a || {});
     var options = buses.map(function (b) {
       var atTsy = b.time + a.busRide * MIN;
       var atGate = atTsy + a.walkToGate * MIN;
-      var train = trains.filter(function (t) { return t.time >= atGate; })[0] || null;
-      var est = false;
-      if (!train && trains.length) { // API only lists ~4 trains: extrapolate at headway
-        var last = trains[trains.length - 1].time;
-        var gap = trains.length > 1 ? Math.max(8 * MIN, Math.min(12 * MIN, (last - trains[0].time) / (trains.length - 1))) : 10 * MIN;
-        var tt = last; while (tt < atGate) tt += gap;
-        train = { time: tt, plat: trains[trains.length - 1].plat, estimated: true }; est = true;
-      }
+      var train = trains.filter(function (t) { return t.time >= atGate; })[0] || null; // live only; null = no catchable live train
       var arrive = train ? train.time + (a.aelRide + a.walkToHallB) * MIN : null;
       return {
-        bus: b, train: train, arrive: arrive, estimated: est,
+        bus: b, train: train, arrive: arrive, noTrain: !train,
         leave: b.time - a.walkToStop * MIN,
         onTime: arrive !== null && arrive <= targetMs,
         missed: b.time - a.walkToStop * MIN < nowMs
@@ -87,5 +63,5 @@
     return base;
   }
   return { KMB_URL: KMB_URL, MTR_URL: MTR_URL, DEFAULTS: DEFAULTS, parseKmb: parseKmb, parseMtr: parseMtr,
-    plan: plan, extend: extend, extendBuses: extendBuses, extendTrains: extendTrains, window60: window60, fmt: fmt, fmtSec: fmtSec, targetToMs: targetToMs };
+    plan: plan, fmt: fmt, fmtSec: fmtSec, targetToMs: targetToMs };
 });

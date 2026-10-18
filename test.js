@@ -25,20 +25,11 @@ const L = require('./logic.js');
   assert.strictEqual(L.fmt(pp.best.leave), '17:24');
   const p2 = L.plan(fb, trs, T('18:45'), T('16:50'));
   assert.strictEqual(L.fmt(p2.best.bus.time), '17:49'); // 18:37
-  assert.ok(p2.options[3].estimated || p2.options[3].train); // extrapolated
+  assert.strictEqual(p2.options[3].train, null); // no live train catchable -> no extrapolation
+  assert.strictEqual(p2.options[3].noTrain, true);
   const p3 = L.plan(fb, trs, T('18:30'), T('17:27')); // 17:29 bus now unreachable (leave 17:24 < now)
   assert.strictEqual(p3.best, null);
+  assert.strictEqual(L.parseKmb({data:[{dir:'O',eta:'2099-01-01T00:00:00+08:00',rmk_tc:'原定班次'},{dir:'O',eta:'2099-01-01T00:10:00+08:00',rmk_tc:''}]}, now).map(b=>b.scheduled).join(), 'true,false');
+  assert.ok(!('extendBuses' in L));
   console.log('unit tests OK');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
-(() => {
-  const L = require('./logic.js'), assert = require('assert');
-  const T = s => Date.parse('2026-10-18T'+s+':00+08:00'), now = T('17:00');
-  const eb = L.extendBuses([{time:T('17:05')},{time:T('17:25')},{time:T('17:46')}], now);
-  assert.deepStrictEqual(eb.map(b=>b.estimated),[false,false,false]); // 17:46+20=18:06>18:00
-  const eb2 = L.extendBuses([{time:T('17:05')}], now); // default 20 gap: 17:25, 17:45
-  assert.deepStrictEqual(eb2.map(b=>L.fmt(b.time)),['17:05','17:25','17:45']);
-  const et = L.extendTrains(['17:02','17:12','17:22','17:32'].map(s=>({time:T(s),plat:'1'})), now);
-  assert.deepStrictEqual(et.map(t=>L.fmt(t.time)),['17:02','17:12','17:22','17:32','17:42','17:52']);
-  assert.ok(et[5].estimated && !et[0].estimated);
-  console.log('window/extend tests OK');
-})();

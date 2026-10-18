@@ -39,3 +39,6 @@ summary{cursor:pointer;color:var(--acc);padding:6px 0}
 .badge{font-size:12px;font-weight:600;padding:1px 6px;border-radius:8px;background:var(--bd);color:var(--mut);vertical-align:middle}
 .badge.live{background:var(--ok);color:#fff}
 .list.compact li{padding:6px 0;font-size:16px}
+
+.badge.est{background:#f59e0b;color:#1f1300}
+.list li.est{border-left:3px dashed #f59e0b;padding-left:8px;font-style:italic;opacity:.9}

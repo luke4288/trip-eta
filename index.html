@@ -26,15 +26,15 @@
   <div id="errors" aria-live="polite"></div>
 
   <section class="card">
-    <h2>接駁行程（實時 68A）</h2>
+    <h2>接駁行程（68A 實時 · 機場快線含估算）</h2>
     <div class="sub" style="margin:-6px 0 8px">荃景圍天橋 (TW378) 68A → 青衣站 → 機場快線</div>
     <div id="conn"><div class="muted">載入中…</div></div>
   </section>
 
   <section class="card">
-    <h2>未來 60 分鐘（實時） <span class="sub" id="winlabel"></span></h2>
+    <h2>未來 60 分鐘 <span class="sub" id="winlabel"></span></h2>
     <ul id="timeline" class="list compact"><li class="muted">載入中…</li></ul>
-    <p class="note">由手機現時時間起計一小時，只列出 API 實時班次；68A 在荃景圍天橋站，機場快線在青衣站。</p>
+    <p class="note">由手機現時時間起計一小時，68A 全為實時班次；機場快線先列實時班次，之後以班距推算的班次標示「估」。68A 在荃景圍天橋站，機場快線在青衣站。</p>
   </section>
 
   <section class="card plan">
@@ -53,7 +53,7 @@
         <label>步行到 B 廳<input id="a_walkToHallB" type="number" min="0" inputmode="numeric"></label>
         <button id="reset" type="button" class="link">還原預設</button>
       </div>
-      <p class="note">只使用 KMB 及 MTR 實時資料，不作班距推算。</p>
+      <p class="note">68A 只使用 KMB 實時資料；機場快線在最後一班實時班次後，按觀察到的班距（約 10 分鐘）推算，標示「估」。</p>
     </details>
   </section>
 
@@ -64,12 +64,13 @@
 
   <section class="card">
     <h2>機場快線 青衣 → 機場 (AEL)</h2>
+    <div class="sub" style="margin:-6px 0 8px">實時班次在前，其後虛線標示「估」為推算班次</div>
     <ul id="mtr" class="list"><li class="muted">載入中…</li></ul>
   </section>
 
   <p class="foot">資料來源：data.gov.hk（KMB、MTR）。每 30 秒自動更新。實際時間以現場為準。</p>
 </main>
-<script src="logic.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="logic.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

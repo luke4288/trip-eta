@@ -28,16 +28,33 @@
       return { time: t, mins: Math.round((t - nowMs) / MIN), plat: d.plat, dest: d.dest };
     }).filter(function (d) { return !isNaN(d.time); }).sort(function (a, b) { return a.time - b.time; });
   }
+  // Extend live trains with ESTIMATED trains (est:true) after the last live one, using the median observed live gap.
+  // Falls back to ~10 min; clamps to 5-15 min. Needs at least one live train as anchor.
+  function headway(trains) {
+    var gaps = [];
+    for (var i = 1; i < trains.length; i++) { var g = (trains[i].time - trains[i - 1].time) / MIN; if (g >= 3 && g <= 30) gaps.push(g); }
+    if (!gaps.length) return 10;
+    gaps.sort(function (a, b) { return a - b; });
+    var m = gaps.length % 2 ? gaps[(gaps.length - 1) / 2] : (gaps[gaps.length / 2 - 1] + gaps[gaps.length / 2]) / 2;
+    return Math.min(15, Math.max(5, Math.round(m)));
+  }
+  function extendTrains(live, horizonMs) {
+    var hw = headway(live), out = live.map(function (t) { return Object.assign({}, t, { est: false }); });
+    if (!live.length) return { trains: out, headway: hw };
+    var last = live[live.length - 1];
+    for (var t = last.time + hw * MIN; t <= horizonMs; t += hw * MIN) out.push({ time: t, plat: last.plat, dest: last.dest, est: true });
+    return { trains: out, headway: hw };
+  }
   // plan: pick the LATEST bus whose arrival at Hall B <= target
   function plan(buses, trains, targetMs, nowMs, a) {
     a = Object.assign({}, DEFAULTS, a || {});
     var options = buses.map(function (b) {
       var atTsy = b.time + a.busRide * MIN;
       var atGate = atTsy + a.walkToGate * MIN;
-      var train = trains.filter(function (t) { return t.time >= atGate; })[0] || null; // live only; null = no catchable live train
+      var train = trains.filter(function (t) { return t.time >= atGate; })[0] || null; // trains sorted: live first, estimated only after last live
       var arrive = train ? train.time + (a.aelRide + a.walkToHallB) * MIN : null;
       return {
-        bus: b, train: train, arrive: arrive, noTrain: !train,
+        bus: b, train: train, arrive: arrive, noTrain: !train, est: !!(train && train.est),
         leave: b.time - a.walkToStop * MIN,
         onTime: arrive !== null && arrive <= targetMs,
         missed: b.time - a.walkToStop * MIN < nowMs
@@ -63,5 +80,5 @@
     return base;
   }
   return { KMB_URL: KMB_URL, MTR_URL: MTR_URL, DEFAULTS: DEFAULTS, parseKmb: parseKmb, parseMtr: parseMtr,
-    plan: plan, fmt: fmt, fmtSec: fmtSec, targetToMs: targetToMs };
+    plan: plan, headway: headway, extendTrains: extendTrains, fmt: fmt, fmtSec: fmtSec, targetToMs: targetToMs };
 });

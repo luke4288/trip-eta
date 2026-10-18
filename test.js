@@ -25,11 +25,22 @@ const L = require('./logic.js');
   assert.strictEqual(L.fmt(pp.best.leave), '17:24');
   const p2 = L.plan(fb, trs, T('18:45'), T('16:50'));
   assert.strictEqual(L.fmt(p2.best.bus.time), '17:49'); // 18:37
-  assert.strictEqual(p2.options[3].train, null); // no live train catchable -> no extrapolation
+  assert.strictEqual(p2.options[3].train, null); // plan() itself never invents trains; extension is separate
   assert.strictEqual(p2.options[3].noTrain, true);
   const p3 = L.plan(fb, trs, T('18:30'), T('17:27')); // 17:29 bus now unreachable (leave 17:24 < now)
   assert.strictEqual(p3.best, null);
   assert.strictEqual(L.parseKmb({data:[{dir:'O',eta:'2099-01-01T00:00:00+08:00',rmk_tc:'原定班次'},{dir:'O',eta:'2099-01-01T00:10:00+08:00',rmk_tc:''}]}, now).map(b=>b.scheduled).join(), 'true,false');
   assert.ok(!('extendBuses' in L));
+  // estimated AEL extension
+  const live = ['17:40','17:50','17:59','18:09'].map(s=>({time:T(s),plat:'1',dest:'AWE'}));
+  assert.strictEqual(L.headway(live), 10);
+  const ex = L.extendTrains(live, T('18:40'));
+  assert.deepStrictEqual(ex.trains.map(t=>L.fmt(t.time)+(t.est?'e':'')), ['17:40','17:50','17:59','18:09','18:19e','18:29e','18:39e']);
+  const p4 = L.plan([{time:T('17:49')},{time:T('17:09')}].sort((a,b)=>a.time-b.time), ex.trains, T('19:00'), T('17:00'));
+  assert.strictEqual(p4.options[0].est, false);  // 17:09 -> gate 17:35 -> live 17:40
+  assert.strictEqual(L.fmt(p4.options[1].train.time), '18:19'); // 17:49 -> gate 18:15 -> est 18:19
+  assert.strictEqual(p4.options[1].est, true);
+  assert.strictEqual(L.headway([{time:T('17:00')}]), 10);
+  assert.strictEqual(L.extendTrains([], T('18:00')).trains.length, 0);
   console.log('unit tests OK');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

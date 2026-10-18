@@ -69,6 +69,7 @@
       return '<li><span class="big">' + (m <= 0 ? '即將開出' : m + ' 分鐘') + '</span><span class="sub">' + L.fmt(t.time) + ' · 月台 ' + esc(t.plat) + ' · 往' + (t.dest === 'AWE' ? '機場／博覽館' : esc(t.dest)) + ' <span class="badge live">實時</span></span></li>';
     }).join('') : '<li class="muted">' + (state.errors.mtr ? '無法取得資料' : '暫時沒有班次資料') + '</li>';
     renderConn(now);
+    renderTimeline(now, readAssump());
     renderPlan(now);
   }
   function renderConn(now) {
@@ -93,7 +94,6 @@
         '<tr><td>抵達機場</td><td class="v">' + (air ? L.fmt(air) + ' <span class="sub">（B 廳 ' + L.fmt(o.arrive) + '）</span>' : '—') + '</td></tr>' +
         '</table></div>';
     }).join('') + '<p class="note">全部為 API 實時資料，不作推算。KMB 目前提供 ' + state.buses.length + ' 班實時 ETA；MTR 目前提供 ' + state.trains.length + ' 班機場快線。若上列班次之後的機場快線尚未出現在 MTR 資料內，會顯示「暫無可趕上的實時班次」。' + (state.skipped ? '另有 ' + state.skipped + ' 班標示「原定班次」（時間表資料，非實時），已排除。' : '') + '</p>';
-    renderTimeline(now, a);
   }
   function renderTimeline(now, a) {
     var end = now + 60 * 60000, items = [];

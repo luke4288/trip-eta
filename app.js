@@ -20,18 +20,31 @@
     var c = new AbortController(), t = setTimeout(function () { c.abort(); }, 10000);
     return fetch(url, { cache: 'no-store', signal: c.signal }).then(function (r) {
       clearTimeout(t);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) throw new Error('HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : ''));
       return r.json();
-    }).catch(function (e) { clearTimeout(t); throw new Error(e.name === 'AbortError' ? '連線逾時' : (e.message === 'Failed to fetch' ? '網絡錯誤' : e.message)); });
+    }).catch(function (e) { clearTimeout(t); throw new Error(e.name === 'AbortError' ? '連線逾時（10 秒）' : (/Failed to fetch|Load failed|NetworkError/i.test(e.message) ? '網絡錯誤（無法連線或被瀏覽器攔截）' : e.message)); });
+  }
+  function delay(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+  // MTR 偶爾在更新瞬間回傳不完整資料（只有 1 筆 valid=N），所以空結果會重試最多 3 次
+  function fetchMtr(now, n) {
+    n = n || 1;
+    return getJson(L.MTR_URL + '&_=' + Date.now()).then(function (j) {
+      var tr = L.parseMtr(j, now);
+      if (!tr.length) { if (n < 3) return delay(1500).then(function () { return fetchMtr(now, n + 1); }); throw new Error('MTR 暫時沒有有效班次（API 回傳 valid=N 或空白）'); }
+      return { trains: tr, stamp: j && j.sys_time };
+    });
+  }
+  function fetchKmb(now) {
+    return getJson(L.KMB_URL).then(function (j) { return { buses: L.parseKmb(j, now), stamp: j && j.generated_timestamp }; });
   }
 
   function refresh() {
     $('refresh').disabled = true;
     var now = Date.now();
-    var kb = getJson(L.KMB_URL).then(function (j) { state.buses = L.parseKmb(j, now); delete state.errors.bus; })
-      .catch(function (e) { state.errors.bus = '巴士資料載入失敗：' + e.message; });
-    var mt = getJson(L.MTR_URL).then(function (j) { state.trains = L.parseMtr(j, now); delete state.errors.mtr; })
-      .catch(function (e) { state.errors.mtr = '機場快線資料載入失敗：' + e.message; });
+    var kb = fetchKmb(now).then(function (r) { state.buses = r.buses; state.kmbStamp = r.stamp; delete state.errors.bus; })
+      .catch(function (e) { state.errors.bus = '巴士（KMB）資料載入失敗：' + e.message; });
+    var mt = fetchMtr(now).then(function (r) { state.trains = r.trains; state.mtrStamp = r.stamp; delete state.errors.mtr; })
+      .catch(function (e) { state.errors.mtr = '機場快線（MTR）資料載入失敗：' + e.message; });
     return Promise.all([kb, mt]).then(function () {
       state.updated = Date.now(); state.now = now; render(); $('refresh').disabled = false;
     });
@@ -41,18 +54,19 @@
     var now = Date.now();
     state.eb = L.extendBuses(state.buses.filter(function (b) { return b.time >= now - 30000; }), now);
     state.et = L.extendTrains(state.trains.filter(function (t) { return t.time >= now - 30000; }), now);
-    $('updated').textContent = state.updated ? '最後更新 ' + L.fmtSec(state.updated) + ' HKT' : '尚未更新';
+    $('updated').textContent = state.updated ? '最後更新 ' + L.fmtSec(state.updated) + ' HKT（實時）' : '尚未更新';
+    $('stamps').textContent = (state.kmbStamp || state.mtrStamp) ? '資料時間：KMB ' + (state.kmbStamp ? String(state.kmbStamp).slice(11, 19) : '—') + ' · MTR ' + (state.mtrStamp ? String(state.mtrStamp).slice(11, 19) : '—') + '（HKT，來自 API）' : '';
     $('errors').innerHTML = '';
     Object.keys(state.errors).forEach(function (k) {
       var d = document.createElement('div'); d.className = 'err'; d.textContent = '⚠ ' + state.errors[k] + '（顯示的可能是舊資料，請按重新整理）'; $('errors').appendChild(d);
     });
     $('bus').innerHTML = state.buses.length ? state.buses.slice(0, 3).map(function (b) {
       var m = Math.round((b.time - now) / 60000);
-      return '<li><span class="big">' + (m <= 0 ? '即將到站' : m + ' 分鐘') + '</span><span class="sub">' + L.fmt(b.time) + (b.remark ? ' · ' + esc(b.remark) : '') + '</span></li>';
+      return '<li><span class="big">' + (m <= 0 ? '即將到站' : m + ' 分鐘') + '</span><span class="sub">' + L.fmt(b.time) + (b.remark ? ' · ' + esc(b.remark) : '') + ' <span class="badge live">實時</span></span></li>';
     }).join('') : '<li class="muted">' + (state.errors.bus ? '無法取得資料' : '暫時沒有 68A 班次資料（可能已收車或未發車）') + '</li>';
     $('mtr').innerHTML = state.trains.length ? state.trains.map(function (t) {
       var m = Math.round((t.time - now) / 60000);
-      return '<li><span class="big">' + (m <= 0 ? '即將開出' : m + ' 分鐘') + '</span><span class="sub">' + L.fmt(t.time) + ' · 月台 ' + esc(t.plat) + ' · 往' + (t.dest === 'AWE' ? '機場／博覽館' : esc(t.dest)) + '</span></li>';
+      return '<li><span class="big">' + (m <= 0 ? '即將開出' : m + ' 分鐘') + '</span><span class="sub">' + L.fmt(t.time) + ' · 月台 ' + esc(t.plat) + ' · 往' + (t.dest === 'AWE' ? '機場／博覽館' : esc(t.dest)) + ' <span class="badge live">實時</span></span></li>';
     }).join('') : '<li class="muted">' + (state.errors.mtr ? '無法取得資料' : '暫時沒有班次資料') + '</li>';
     renderConn(now);
     renderPlan(now);
@@ -73,9 +87,9 @@
       return '<div class="conn"><div class="ch"><span class="big">' + (mins <= 0 ? '即將到站' : mins + ' 分鐘') + '</span><span class="tag ' + cls + '">' + tag + '</span></div>' +
         '<table>' +
         '<tr><td>出門</td><td class="v">' + L.fmt(o.leave) + '</td></tr>' +
-        '<tr><td>68A 到站</td><td class="v">' + L.fmt(o.bus.time) + (o.bus.remark ? ' <span class="sub">' + esc(o.bus.remark) + '</span>' : '') + '</td></tr>' +
+        '<tr><td>68A 到站</td><td class="v">' + L.fmt(o.bus.time) + ' ' + badge(o.bus.estimated) + (o.bus.remark ? ' <span class="sub">' + esc(o.bus.remark) + '</span>' : '') + '</td></tr>' +
         '<tr><td>抵達青衣站</td><td class="v">' + L.fmt(tsy) + '</td></tr>' +
-        '<tr><td>機場快線開出</td><td class="v">' + (o.train ? L.fmt(o.train.time) + (o.train.estimated ? '（估）' : '') + ' · 月台 ' + esc(o.train.plat) : '—') + '</td></tr>' +
+        '<tr><td>機場快線開出</td><td class="v">' + (o.train ? L.fmt(o.train.time) + ' ' + badge(o.train.estimated) + ' · 月台 ' + esc(o.train.plat) : '—') + '</td></tr>' +
         '<tr><td>抵達機場</td><td class="v">' + (air ? L.fmt(air) + ' <span class="sub">（B 廳 ' + L.fmt(o.arrive) + '）</span>' : '—') + '</td></tr>' +
         '</table></div>';
     }).join('') + '<p class="note">「實時」＝KMB 即時 ETA；「估」＝按觀察到的班距推算。' + (state.buses.length < 3 ? '目前 KMB 只提供 ' + state.buses.length + ' 班實時資料。' : 'KMB 只提供最多 3 班實時 ETA。') + '</p>';
@@ -93,6 +107,7 @@
     }).join('') : '<li class="muted">此時段沒有資料</li>';
     $('winlabel').textContent = L.fmt(now) + ' – ' + L.fmt(end) + ' HKT';
   }
+  function badge(est) { return '<span class="badge' + (est ? '' : ' live') + '">' + (est ? '估' : '實時') + '</span>'; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   function renderPlan(now) {
